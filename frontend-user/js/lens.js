@@ -12,9 +12,14 @@ class Lens {
         this.curvature = options.curvature || CONFIG.LENS_DEFAULTS.curvature;
         this.material = options.material || CONFIG.LENS_DEFAULTS.material;
         this.selected = false;
-        
+
         // 根据材料设置默认参数
         this.applyMaterial(this.material);
+
+        // 反序列化时恢复材料自带的阿贝数
+        if (options.abbeNumber !== undefined) {
+            this.abbeNumber = options.abbeNumber;
+        }
     }
     
     /**
@@ -36,8 +41,8 @@ class Lens {
         }
         
         this.material = materialId;
-        this.dispersion = material.dispersion;
-        
+        this.abbeNumber = material.abbeNumber;
+
         // 只在初始化时设置折射率
         if (!this._initialized) {
             this.refractiveIndex = material.refractiveIndex;
@@ -67,9 +72,11 @@ class Lens {
         if (this.type === CONFIG.LENS_TYPES.PLANO) {
             return Infinity;
         }
-        
+
         const sign = this.type === CONFIG.LENS_TYPES.CONCAVE ? -1 : 1;
-        return sign * Physics.calculateFocalLength(this.refractiveIndex, this.curvature, this.getHeight());
+        // Physics 使用凸/凹自身曲率口径；凹透镜焦距为负（虚焦点）
+        const f = Physics.calculateFocalLength(this.refractiveIndex, this.curvature, this.getHeight());
+        return sign * f;
     }
     
     /**
@@ -118,7 +125,7 @@ class Lens {
         this.size = CONFIG.LENS_DEFAULTS.size;
         this.curvature = CONFIG.LENS_DEFAULTS.curvature;
         this.material = CONFIG.LENS_DEFAULTS.material;
-        this.dispersion = CONFIG.MATERIALS.NORMAL.dispersion;
+        this.abbeNumber = CONFIG.MATERIALS.NORMAL.abbeNumber;
     }
     
     /**
@@ -131,6 +138,7 @@ class Lens {
             x: this.x,
             y: this.y,
             refractiveIndex: this.refractiveIndex,
+            abbeNumber: this.abbeNumber,
             size: this.size,
             curvature: this.curvature,
             material: this.material

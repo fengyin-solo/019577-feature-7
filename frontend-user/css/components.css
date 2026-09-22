@@ -344,6 +344,56 @@
     border-color: var(--color-primary);
 }
 
+/* 入射倾角控件 */
+.angle-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 2px var(--spacing-sm);
+    background-color: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    min-height: 32px;
+}
+
+.angle-control.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.angle-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+}
+
+.angle-slider {
+    width: 90px;
+    height: 4px;
+}
+
+.angle-value {
+    font-family: "Courier New", monospace;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary);
+    min-width: 28px;
+    text-align: right;
+}
+
+.angle-range-hint {
+    font-size: 10px;
+    color: var(--color-text-hint);
+    white-space: nowrap;
+}
+
+.angle-range-hint:empty {
+    display: none;
+}
+
 /* 模态框 */
 .modal-overlay {
     position: fixed;

@@ -12,11 +12,109 @@ class InteractionManager {
     
     init() {
         this.bindLensLibraryEvents();
+        this.bindAngleControl();
         this.bindToolbarEvents();
         this.bindParamPanelEvents();
         this.bindFooterEvents();
         this.bindHelpEvents();
         this.bindLensSelectionEvents();
+        this.updateAngleControlState();
+
+        // 透镜增删或移动后，倾角有效范围会变化
+        window.addEventListener('lensLayoutChanged', () => this.updateAngleRange());
+    }
+
+    /**
+     * 绑定入射倾角滑块
+     */
+    bindAngleControl() {
+        this.angleSlider = document.getElementById('param-angle');
+        this.angleValue = document.getElementById('param-angle-value');
+        this.angleRangeHint = document.getElementById('angle-range-hint');
+        this.lastAngleWarnAt = 0;
+
+        this.angleSlider.addEventListener('input', () => {
+            const value = parseInt(this.angleSlider.value, 10);
+            const max = this.getEffectiveMaxAngle();
+
+            if (Math.abs(value) > max + 0.001) {
+                // 超出有效范围：提示并回弹到原值
+                const clamped = Utils.clamp(value, -max, max);
+                this.angleSlider.value = clamped;
+                this.angleValue.textContent = `${clamped}°`;
+                this.warnAngleOutOfRange(max);
+                return;
+            }
+
+            this.angleValue.textContent = `${value}°`;
+            this.renderer.setIncidentAngle(value);
+        });
+    }
+
+    /**
+     * 根据画布上第一片透镜的孔径，计算当前有效最大倾角
+     */
+    getEffectiveMaxAngle() {
+        return Physics.calculateMaxIncidentAngle(
+            this.canvasManager.lenses,
+            this.renderer.height
+        );
+    }
+
+    /**
+     * 越界提示（节流，避免拖动时刷屏）
+     */
+    warnAngleOutOfRange(max) {
+        const now = Date.now();
+        if (now - this.lastAngleWarnAt > 1500) {
+            this.lastAngleWarnAt = now;
+            Utils.showToast(`倾角超出有效范围（±${max.toFixed(0)}°），已保留原值`, 'warning', 1800);
+        }
+    }
+
+    /**
+     * 更新滑块的有效范围提示与上下限
+     */
+    updateAngleRange() {
+        if (!this.angleSlider) return;
+        const max = this.getEffectiveMaxAngle();
+        const rounded = Math.floor(max);
+
+        this.angleSlider.min = -rounded;
+        this.angleSlider.max = rounded;
+
+        if (this.canvasManager.lenses.length > 0) {
+            this.angleRangeHint.textContent = `有效范围 ±${rounded}°`;
+        } else {
+            this.angleRangeHint.textContent = '';
+        }
+
+        // 当前值因透镜移动等原因变得越界时，夹回有效范围
+        const current = parseInt(this.angleSlider.value, 10) || 0;
+        if (Math.abs(current) > rounded) {
+            const clamped = Utils.clamp(current, -rounded, rounded);
+            this.angleSlider.value = clamped;
+            this.angleValue.textContent = `${clamped}°`;
+            this.renderer.setIncidentAngle(clamped);
+        }
+    }
+
+    /**
+     * 点光源模式下倾角控件不可用
+     */
+    updateAngleControlState() {
+        const control = document.getElementById('angle-control');
+        if (!control || !this.angleSlider) return;
+
+        const isParallel = this.renderer.lightMode === CONFIG.LIGHT_MODES.PARALLEL;
+        control.classList.toggle('disabled', !isParallel);
+        this.angleSlider.disabled = !isParallel;
+
+        if (!isParallel) {
+            this.angleRangeHint.textContent = '点光源不适用';
+        } else {
+            this.updateAngleRange();
+        }
     }
     
     bindLensLibraryEvents() {
@@ -79,10 +177,21 @@ class InteractionManager {
         // 光源模式选择
         document.getElementById('select-light-mode').addEventListener('change', (e) => {
             this.renderer.setLightMode(e.target.value);
-            document.getElementById('data-light-type').textContent = 
-                e.target.value === 'parallel' ? '平行光' : '点光源';
+            const lightTypeEl = document.getElementById('data-light-type');
+            if (lightTypeEl) {
+                lightTypeEl.textContent = e.target.value === 'parallel' ? '平行光' : '点光源';
+            }
+            this.updateAngleControlState();
         });
-        
+
+        // 色散开关
+        const btnToggleDispersion = document.getElementById('btn-toggle-dispersion');
+        btnToggleDispersion.addEventListener('click', () => {
+            const show = !this.renderer.showDispersion;
+            this.renderer.setShowDispersion(show);
+            btnToggleDispersion.classList.toggle('active', show);
+        });
+
         // 切换标注
         const btnToggleLabels = document.getElementById('btn-toggle-labels');
         btnToggleLabels.addEventListener('click', () => {
@@ -144,8 +253,9 @@ class InteractionManager {
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.applyMaterial(e.target.value);
                 riSlider.value = this.canvasManager.selectedLens.refractiveIndex;
-                document.getElementById('param-ri-value').textContent = 
+                document.getElementById('param-ri-value').textContent =
                     this.canvasManager.selectedLens.refractiveIndex.toFixed(2);
+                this.updateAbbeDisplay(this.canvasManager.selectedLens);
                 this.renderer.render();
             }
         });
@@ -222,8 +332,26 @@ class InteractionManager {
         document.getElementById('param-curvature').value = lens.curvature;
         document.getElementById('param-curvature-value').textContent = `${lens.curvature}%`;
         document.getElementById('param-material').value = lens.material;
-        
+        this.updateAbbeDisplay(lens);
+
         const curvatureGroup = document.getElementById('param-curvature-group');
         curvatureGroup.style.display = lens.type === CONFIG.LENS_TYPES.PLANO ? 'none' : 'flex';
+    }
+
+    /**
+     * 刷新阿贝数显示
+     */
+    updateAbbeDisplay(lens) {
+        const valueEl = document.getElementById('param-abbe-value');
+        const descEl = document.getElementById('param-abbe-desc');
+        if (!valueEl) return;
+
+        const vd = lens.abbeNumber;
+        valueEl.textContent = isFinite(vd) ? Math.round(vd) : '—';
+
+        let level = '色散中等';
+        if (vd >= 80) level = '色散很小';
+        else if (vd <= 30) level = '色散明显';
+        descEl.textContent = `（${level}：阿贝数越小，斜入射色散越明显）`;
     }
 }

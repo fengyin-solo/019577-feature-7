@@ -109,9 +109,9 @@ class CanvasManager {
     
     handlePointerMove(e) {
         if (!this.isDragging || !this.selectedLens) return;
-        
+
         const pos = this.getPointerPos(e);
-        
+
         this.selectedLens.x = Utils.clamp(
             pos.x - this.dragOffset.x,
             50,
@@ -122,8 +122,9 @@ class CanvasManager {
             50,
             this.renderer.height - 50
         );
-        
+
         this.renderer.render();
+        window.dispatchEvent(new CustomEvent('lensLayoutChanged'));
     }
     
     handlePointerUp() {

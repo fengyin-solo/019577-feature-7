@@ -11,9 +11,9 @@ class Renderer {
         this.incidentAngle = CONFIG.LIGHT_DEFAULTS.angle;
         this.isRunning = false;
         this.showLabels = true;
-        this.showDispersion = false;
+        this.showDispersion = true;
         this.simpleMode = false;
-        
+
         this.resize();
     }
     
@@ -37,6 +37,7 @@ class Renderer {
     setLenses(lenses) {
         this.lenses = lenses;
         this.render();
+        window.dispatchEvent(new CustomEvent('lensLayoutChanged'));
     }
     
     setLightMode(mode) {
@@ -225,20 +226,24 @@ class Renderer {
     
     drawLightRays() {
         let rays;
-        
+
         if (this.lightMode === CONFIG.LIGHT_MODES.PARALLEL) {
-            rays = Physics.generateParallelRays(this.height, this.rayCount, this.incidentAngle);
+            const first = this.lenses.length
+                ? this.lenses.reduce((a, b) => (a.x < b.x ? a : b))
+                : null;
+            const target = first
+                ? { x: first.x, y: first.y, halfHeight: first.getHeight() / 2 }
+                : null;
+            rays = Physics.generateParallelRays(this.height, this.rayCount, this.incidentAngle, target);
         } else {
             rays = Physics.generatePointSourceRays(50, this.height / 2, this.rayCount);
         }
-        
-        // 检查是否有透镜需要显示色散效果
-        // 普通玻璃色散明显，低色散镜片色散小
-        const hasDispersiveLens = this.lenses.some(l => l.dispersion > 0.05);
-        
-        if (this.showDispersion && hasDispersiveLens) {
+
+        // 非平面透镜都会产生色散；阿贝数越小越明显
+        const hasRefractiveLens = this.lenses.some(l => l.type !== CONFIG.LENS_TYPES.PLANO);
+
+        if (this.showDispersion && hasRefractiveLens) {
             // 色散模式：分别绘制红、绿、蓝三色光
-            // 绘制顺序：先红后蓝，这样蓝光在上层更明显
             ['red', 'green', 'blue'].forEach(color => {
                 rays.forEach(ray => this.traceRayWithDispersion(ray, color));
             });
@@ -292,23 +297,25 @@ class Renderer {
             ctx.lineTo(nearest.x, nearest.y);
             ctx.stroke();
             
-            // 计算该颜色光的折射率
+            // 计算该颜色光的折射率（按阿贝数分配）
             const colorIndex = Physics.calculateDispersionIndex(
                 nearestLens.refractiveIndex,
-                nearestLens.dispersion,
+                nearestLens.abbeNumber,
                 color
             );
-            
-            // 创建临时透镜对象，使用色散后的折射率
+
+            // 临时透镜改用该颜色的折射率（折射率已按波长取定），
+            // 直接按 d 线口径偏折，不再做第二次色散分配
             const tempLens = {
                 ...nearestLens,
                 refractiveIndex: colorIndex,
+                abbeNumber: Infinity,
                 y: nearestLens.y,
                 getHeight: () => nearestLens.getHeight(),
                 type: nearestLens.type,
                 curvature: nearestLens.curvature
             };
-            
+
             const newAngle = Physics.calculateRefractedAngle(rayAngle, nearest.y, tempLens);
             
             rayX = nearest.x;
@@ -430,28 +437,69 @@ class Renderer {
     
     drawLabels() {
         const ctx = this.ctx;
-        
+        const isParallel = this.lightMode === CONFIG.LIGHT_MODES.PARALLEL;
+        const angleDeg = isParallel ? this.incidentAngle : 0;
+
         this.lenses.forEach(lens => {
             if (lens.type === CONFIG.LENS_TYPES.PLANO) return;
-            
-            const focalLength = lens.getFocalLength();
-            if (!isFinite(focalLength)) return;
-            
-            const focalX = lens.x + focalLength;
-            const focalY = lens.y;
-            
-            if (focalX > 0 && focalX < this.width) {
-                ctx.fillStyle = CONFIG.COLORS.FOCAL_POINT;
-                ctx.beginPath();
-                ctx.arc(focalX, focalY, CONFIG.RENDER.FOCAL_POINT_RADIUS, 0, Math.PI * 2);
-                ctx.fill();
-                
-                ctx.font = '12px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('F', focalX, focalY - 12);
+
+            // 用与画布光线完全相同的物理规律追迹分析
+            const analysis = Physics.analyzeLens(lens, angleDeg);
+
+            if (analysis.isConcave) {
+                // 凹透镜：虚焦点在入射侧
+                const vf = Math.abs(analysis.paraxialFocalLength);
+                if (!isFinite(vf)) return;
+                const fx = lens.x - vf;
+                const fy = lens.y - vf * Math.tan(Utils.degToRad(angleDeg));
+                if (fx > 0 && fx < this.width) {
+                    ctx.strokeStyle = CONFIG.COLORS.FOCAL_POINT;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, CONFIG.RENDER.FOCAL_POINT_RADIUS, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = CONFIG.COLORS.FOCAL_POINT;
+                    ctx.fillText('F(虚)', fx, fy - 10);
+                }
+                return;
+            }
+
+            if (this.showDispersion) {
+                // 色散模式：画出红、绿、蓝三色各自的焦点
+                Object.entries(analysis.byColor).forEach(([color, data]) => {
+                    const fx = lens.x + data.meetX;
+                    const fy = lens.y + data.meetYOffset * analysis.halfHeight;
+                    if (fx < 0 || fx > this.width || fy < 0 || fy > this.height) return;
+
+                    ctx.fillStyle = CONFIG.COLORS[`RAY_${color.toUpperCase()}`];
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, CONFIG.RENDER.FOCAL_POINT_RADIUS - 1, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('F', fx, fy - 9);
+                });
+            } else {
+                // 单色光：绿光（d线）焦点，斜入射时位于焦平面轴外
+                const fp = analysis.byColor.green;
+                const fx = lens.x + fp.meetX;
+                const fy = lens.y + fp.meetYOffset * analysis.halfHeight;
+                if (fx >= 0 && fx <= this.width && fy >= 0 && fy <= this.height) {
+                    ctx.fillStyle = CONFIG.COLORS.FOCAL_POINT;
+                    ctx.beginPath();
+                    ctx.arc(fx, fy, CONFIG.RENDER.FOCAL_POINT_RADIUS, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('F', fx, fy - 12);
+                }
             }
         });
-        
+
         ctx.fillStyle = CONFIG.COLORS.OPTICAL_AXIS;
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'left';

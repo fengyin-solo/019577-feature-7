@@ -258,8 +258,21 @@
                             <option value="parallel">平行光</option>
                             <option value="point">点光源</option>
                         </select>
+                        <div class="angle-control" id="angle-control">
+                            <label class="angle-label" for="param-angle">
+                                入射倾角
+                                <button class="btn-help-small" data-help="incidentAngle">?</button>
+                            </label>
+                            <input type="range" class="param-slider angle-slider" id="param-angle"
+                                   min="-30" max="30" step="1" value="0">
+                            <span class="angle-value" id="param-angle-value">0°</span>
+                            <span class="angle-range-hint" id="angle-range-hint"></span>
+                        </div>
                     </div>
                     <div class="toolbar-right">
+                        <button class="btn btn-tool active" id="btn-toggle-dispersion" title="显示/隐藏色散（红/绿/蓝三色光）">
+                            <span>🌈 色散</span>
+                        </button>
                         <button class="btn btn-tool" id="btn-toggle-labels" title="显示/隐藏标注">
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M4 7V4h16v3"/>
@@ -321,12 +334,19 @@
                             <div class="param-hint">调节透镜的弯曲程度</div>
                         </div>
                         <div class="param-group">
-                            <label class="param-label">材料类型</label>
+                            <label class="param-label">
+                                材料类型
+                                <button class="btn-help-small" data-help="abbeNumber">?</button>
+                            </label>
                             <select class="param-select" id="param-material">
                                 <option value="normal">普通玻璃</option>
                                 <option value="highIndex">高折射率镜片</option>
                                 <option value="lowDispersion">低色散镜片</option>
                             </select>
+                            <div class="param-hint">
+                                阿贝数 Vd = <strong id="param-abbe-value">45</strong>
+                                <span id="param-abbe-desc">（阿贝数越小，斜入射色散越明显）</span>
+                            </div>
                         </div>
                         <div class="param-actions">
                             <button class="btn btn-secondary" id="btn-reset-lens">重置参数</button>

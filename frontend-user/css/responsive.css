@@ -127,6 +127,28 @@
     .btn-tool span {
         display: none;
     }
+
+    /* 色散按钮没有独立图标，移动端保留文字 */
+    #btn-toggle-dispersion span {
+        display: inline;
+        font-size: var(--font-size-xs);
+    }
+
+    /* 倾角控件在窄屏占整行，滑块拉宽便于触摸 */
+    .toolbar-center {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .angle-control {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .angle-slider {
+        flex: 1;
+        max-width: 160px;
+    }
     
     .canvas-wrapper {
         margin: var(--spacing-sm);
