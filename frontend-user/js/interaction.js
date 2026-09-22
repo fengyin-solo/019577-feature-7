@@ -6,13 +6,15 @@ class InteractionManager {
         this.canvasManager = canvasManager;
         this.renderer = canvasManager.getRenderer();
         this.btnToggleLight = null;
-        
+        this.lastAngleWarnAt = 0;
+
         this.init();
     }
     
     init() {
         this.bindLensLibraryEvents();
         this.bindToolbarEvents();
+        this.bindAngleControl();
         this.bindParamPanelEvents();
         this.bindFooterEvents();
         this.bindHelpEvents();
@@ -65,22 +67,62 @@ class InteractionManager {
                 Utils.showToast('画布已经是空的了', 'info');
                 return;
             }
-            
+
             // 重置透镜
             this.canvasManager.clear();
-            
+
             // 重置光线状态
             this.renderer.setRunning(false);
+            this.renderer.setShowDispersion(false);
+            this.renderer.setCompareAberration(false);
+            this.renderer.setIncidentAngle(CONFIG.LIGHT_DEFAULTS.angle);
+            document.getElementById('btn-toggle-dispersion').classList.remove('active');
+            document.getElementById('btn-compare-aberration').classList.remove('active');
+            if (this.angleSlider) this.angleSlider.value = CONFIG.LIGHT_DEFAULTS.angle;
+            if (this.angleValue) this.angleValue.textContent = `${CONFIG.LIGHT_DEFAULTS.angle}°`;
+            this.updateAngleRangeHint();
             this.updateLightButtonState(false);
-            
+
             Utils.showToast('画布已重置', 'success');
         });
         
         // 光源模式选择
-        document.getElementById('select-light-mode').addEventListener('change', (e) => {
+        const selectLightMode = document.getElementById('select-light-mode');
+        selectLightMode.addEventListener('change', (e) => {
             this.renderer.setLightMode(e.target.value);
-            document.getElementById('data-light-type').textContent = 
-                e.target.value === 'parallel' ? '平行光' : '点光源';
+            this.updateAngleControlState(e.target.value);
+        });
+
+        // 色散开关：红/绿/蓝三色光，蓝光偏折最多
+        const btnDispersion = document.getElementById('btn-toggle-dispersion');
+        btnDispersion.addEventListener('click', () => {
+            const show = !this.renderer.showDispersion;
+            this.renderer.setShowDispersion(show);
+            btnDispersion.classList.toggle('active', show);
+            Utils.showToast(
+                show ? '已开启色散显示：蓝、绿、红三色光分别计算' : '已关闭色散显示',
+                'info'
+            );
+        });
+
+        // 球面 / 非球面同光路对比
+        const btnCompare = document.getElementById('btn-compare-aberration');
+        btnCompare.addEventListener('click', () => {
+            const hasComparable = this.canvasManager.lenses.some(l =>
+                l.type === CONFIG.LENS_TYPES.CONVEX ||
+                l.type === CONFIG.LENS_TYPES.ASPHERIC
+            );
+            if (!hasComparable) {
+                Utils.showToast('请先在画布上添加凸透镜或非球面透镜', 'warning');
+                return;
+            }
+            const compare = !this.renderer.compareAberration;
+            this.renderer.setCompareAberration(compare);
+            btnCompare.classList.toggle('active', compare);
+            Utils.showToast(
+                compare ? '紫色虚线为另一种透镜的光路，对比球差差异' : '已关闭对比光路',
+                'info'
+            );
         });
         
         // 切换标注
@@ -91,6 +133,85 @@ class InteractionManager {
         });
     }
     
+    /**
+     * 入射倾角控件
+     * 倾角超出当前画布/透镜位置对应的有效范围时：
+     * 立即回退滑块并保留原值，给出提示。
+     */
+    bindAngleControl() {
+        this.angleSlider = document.getElementById('input-incident-angle');
+        this.angleValue = document.getElementById('incident-angle-value');
+        this.angleRangeHint = document.getElementById('angle-range-hint');
+        this.angleControl = document.getElementById('angle-control');
+
+        // 拖动过程中即时回退越界值（toast 节流避免刷屏）
+        this.angleSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value, 10);
+            const range = this.renderer.getEffectiveAngleRange();
+
+            if (range && (value < range.min || value > range.max)) {
+                const now = Date.now();
+                if (now - this.lastAngleWarnAt > 800) {
+                    this.lastAngleWarnAt = now;
+                    this.warnAngleOutOfRange(value, range);
+                }
+                e.target.value = this.renderer.incidentAngle;
+                return;
+            }
+            this.angleValue.textContent = `${value}°`;
+            this.renderer.setIncidentAngle(value);
+        });
+
+        // 透镜位置/数量/画布尺寸变化后刷新有效范围提示
+        window.addEventListener('sceneGeometryChanged', () => this.updateAngleRangeHint());
+        this.updateAngleRangeHint();
+        this.updateAngleControlState(this.renderer.lightMode);
+    }
+
+    warnAngleOutOfRange(value, range) {
+        Utils.showToast(
+            `倾角 ${value}° 超出有效范围（${range.min}° ~ ${range.max}°），光束无法完整照到透镜，已保留原值`,
+            'warning',
+            1200
+        );
+        this.angleValue.textContent = `${this.renderer.incidentAngle}°`;
+    }
+
+    /**
+     * 根据画布与最左透镜位置计算并显示当前有效倾角范围
+     */
+    updateAngleRangeHint() {
+        if (!this.angleRangeHint) return;
+        const range = this.renderer.getEffectiveAngleRange();
+
+        if (!range) {
+            this.angleRangeHint.textContent = '';
+            return;
+        }
+        this.angleRangeHint.textContent = `有效 ${range.min}°~${range.max}°`;
+
+        // 动态收窄滑块物理范围
+        this.angleSlider.min = range.min;
+        this.angleSlider.max = range.max;
+
+        // 透镜移动后原值可能失效：保留原值并提示
+        const current = this.renderer.incidentAngle;
+        if (current < range.min || current > range.max) {
+            Utils.showToast(
+                `透镜移动后 ${current}° 已超出有效范围（${range.min}° ~ ${range.max}°），已保留原值`,
+                'warning'
+            );
+        }
+    }
+
+    updateAngleControlState(mode) {
+        if (!this.angleControl) return;
+        // 倾角只对平行光束有意义
+        const parallel = mode === CONFIG.LIGHT_MODES.PARALLEL;
+        this.angleControl.classList.toggle('disabled', !parallel);
+        this.angleSlider.disabled = !parallel;
+    }
+
     /**
      * 更新光线按钮状态
      */
@@ -122,10 +243,11 @@ class InteractionManager {
         sizeSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             document.getElementById('param-size-value').textContent = `${value}%`;
-            
+
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.size = value;
                 this.renderer.render();
+                this.canvasManager.notifySceneChanged();
             }
         });
         
@@ -155,6 +277,7 @@ class InteractionManager {
                 this.canvasManager.selectedLens.reset();
                 this.updateParamPanel(this.canvasManager.selectedLens);
                 this.renderer.render();
+                this.canvasManager.notifySceneChanged();
                 Utils.showToast('参数已重置', 'success');
             }
         });

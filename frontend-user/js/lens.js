@@ -37,19 +37,27 @@ class Lens {
         
         this.material = materialId;
         this.dispersion = material.dispersion;
-        
+        this.abbeNumber = material.abbeNumber;
+
         // 只在初始化时设置折射率
         if (!this._initialized) {
             this.refractiveIndex = material.refractiveIndex;
             this._initialized = true;
         }
     }
-    
+
+    /**
+     * 获取阿贝数（数值越大色散越小）
+     */
+    getAbbeNumber() {
+        return this.abbeNumber || Physics.dispersionToAbbe(this.dispersion);
+    }
+
     /**
      * 获取透镜高度
      */
     getHeight() {
-        return 80 * (this.size / 100);
+        return Physics.lensAperture(this.size);
     }
     
     /**
@@ -119,6 +127,7 @@ class Lens {
         this.curvature = CONFIG.LENS_DEFAULTS.curvature;
         this.material = CONFIG.LENS_DEFAULTS.material;
         this.dispersion = CONFIG.MATERIALS.NORMAL.dispersion;
+        this.abbeNumber = CONFIG.MATERIALS.NORMAL.abbeNumber;
     }
     
     /**

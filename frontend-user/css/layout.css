@@ -117,6 +117,13 @@
     gap: var(--spacing-sm);
 }
 
+.toolbar-center {
+    flex-wrap: wrap;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+}
+
 .canvas-wrapper {
     flex: 1;
     position: relative;

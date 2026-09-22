@@ -123,7 +123,19 @@
     .toolbar-right {
         gap: var(--spacing-xs);
     }
-    
+
+    .angle-range-hint {
+        display: none;
+    }
+
+    .angle-slider {
+        width: 72px;
+    }
+
+    .angle-label {
+        font-size: 10px;
+    }
+
     .btn-tool span {
         display: none;
     }

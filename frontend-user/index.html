@@ -258,8 +258,35 @@
                             <option value="parallel">平行光</option>
                             <option value="point">点光源</option>
                         </select>
+                        <div class="angle-control" id="angle-control">
+                            <label class="angle-label" for="input-incident-angle">
+                                入射倾角
+                                <button class="btn-help-small" data-help="incidentAngle" type="button">?</button>
+                            </label>
+                            <input type="range" class="angle-slider" id="input-incident-angle"
+                                   min="-30" max="30" step="1" value="0">
+                            <span class="angle-value" id="incident-angle-value">0°</span>
+                            <span class="angle-range-hint" id="angle-range-hint"></span>
+                        </div>
                     </div>
                     <div class="toolbar-right">
+                        <button class="btn btn-tool" id="btn-toggle-dispersion" title="红/绿/蓝三色光，观察色散">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M2 12h4"/>
+                                <path d="M18 6l4 6-4 6"/>
+                                <path d="M6 6l-2 6 2 6" stroke="#E74C3C"/>
+                                <path d="M8 4l-2.5 8L8 20" stroke="#27AE60"/>
+                                <path d="M10 2l-3 10 3 10" stroke="#3498DB"/>
+                            </svg>
+                            <span>色散</span>
+                        </button>
+                        <button class="btn btn-tool" id="btn-compare-aberration" title="在同一条光路上对比球面与非球面透镜">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="9"/>
+                                <path d="M12 3v18"/>
+                            </svg>
+                            <span>球面/非球面对比</span>
+                        </button>
                         <button class="btn btn-tool" id="btn-toggle-labels" title="显示/隐藏标注">
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M4 7V4h16v3"/>

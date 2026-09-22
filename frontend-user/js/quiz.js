@@ -338,26 +338,27 @@ class QuizManager {
         if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
             return { converging: false, message: '需要使用凸透镜' };
         }
-        
-        const focalLength = lens.getFocalLength();
+
+        const focalLength = Physics.getFocalLength(lens);
         const minFocal = this.currentQuestion.requirements.minFocalLength || 50;
         const maxFocal = this.currentQuestion.requirements.maxFocalLength || 500;
-        
+
         if (focalLength < minFocal || focalLength > maxFocal) {
-            return { 
-                converging: false, 
-                message: `焦距 ${Math.round(focalLength)}px 不在合适范围内 (${minFocal}-${maxFocal}px)` 
+            return {
+                converging: false,
+                message: `焦距 ${Math.round(focalLength)}px 不在合适范围内 (${minFocal}-${maxFocal}px)`
             };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.15) {
-            return { converging: false, message: '会聚能力太弱，请增大折射率或曲率' };
+
+        // 边缘光线（口径处）的偏折斜率 h/f，直接来自薄透镜规律
+        const edgeSlope = (lens.getHeight() / 2) / focalLength;
+        if (edgeSlope < 0.15) {
+            return { converging: false, message: '会聚能力太弱，请增大折射率或弧度' };
         }
-        
+
         return { converging: true, message: `光线会聚良好，焦距约 ${Math.round(focalLength)}px` };
     }
-    
+
     /**
      * 检查光线发散情况
      */
@@ -365,85 +366,129 @@ class QuizManager {
         if (lens.type !== CONFIG.LENS_TYPES.CONCAVE) {
             return { diverging: false, message: '需要使用凹透镜' };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.1) {
-            return { diverging: false, message: '发散能力太弱，请增大折射率或曲率' };
+
+        const focalLength = Math.abs(Physics.getFocalLength(lens));
+        const edgeSlope = (lens.getHeight() / 2) / focalLength;
+        if (edgeSlope < 0.1) {
+            return { diverging: false, message: '发散能力太弱，请增大折射率或弧度' };
         }
-        
-        return { diverging: true, message: '光线发散效果明显' };
+
+        return { diverging: true, message: '光线发散效果明显（虚焦点）' };
     }
     
     /**
-     * 检查光线是否无偏折
+     * 检查光线是否无偏折（平面透镜垂直入射）
      */
     checkNoDeflection(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.PLANO) {
             return { noDeflection: false, message: '需要使用平面透镜' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) > 5) {
-            return { noDeflection: false, message: '请让光线垂直入射（入射角为0）' };
+
+        if (this.renderer.lightMode === CONFIG.LIGHT_MODES.PARALLEL &&
+            Math.abs(this.renderer.incidentAngle) > 1) {
+            return { noDeflection: false, message: '请让光线垂直入射（倾角调到0°），平板只产生侧移' };
         }
-        
+
         return { noDeflection: true, message: '光线沿直线传播，方向不变' };
     }
-    
+
     /**
-     * 检查色散效果
+     * 检查色散效果（与画面同一套规律）
+     * 判据：已开启色散显示、材料阿贝数小、平行光有倾角、三色焦距差足够大
      */
     checkDispersion(lens) {
-        if (lens.dispersion < 0.2) {
-            return { hasDispersion: false, message: '材料色散太小，请使用普通玻璃' };
+        if (!this.renderer.showDispersion) {
+            return { hasDispersion: false, message: '请先点击工具栏“色散”按钮，开启三色光' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) < 5) {
-            return { hasDispersion: false, message: '请增大入射角，让光线斜入射' };
+
+        const abbe = lens.getAbbeNumber ? lens.getAbbeNumber() : 60;
+        if (abbe >= 45) {
+            return { hasDispersion: false, message: `该材料阿贝数约${abbe}，色散太小，请换普通玻璃或高折射率镜片` };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.2) {
-            return { hasDispersion: false, message: '偏折太弱，色散不明显' };
+
+        if (this.renderer.lightMode !== CONFIG.LIGHT_MODES.PARALLEL) {
+            return { hasDispersion: false, message: '请切换到平行光模式观察色散' };
         }
-        
-        return { hasDispersion: true, message: '色散现象明显，不同颜色光分离' };
+
+        if (Math.abs(this.renderer.incidentAngle) < 8) {
+            return { hasDispersion: false, message: '请增大入射倾角（≥8°），斜入射时三色分离更明显' };
+        }
+
+        // 蓝、红近轴焦点的焦平面高度差（像素），直接取自物理模型
+        const nBlue = Physics.calculateDispersionIndex(lens.refractiveIndex, lens.dispersion, 'blue', lens.abbeNumber);
+        const nRed = Physics.calculateDispersionIndex(lens.refractiveIndex, lens.dispersion, 'red', lens.abbeNumber);
+        const fBlue = Physics.calculateFocalLength(nBlue, lens.curvature, lens.getHeight());
+        const fRed = Physics.calculateFocalLength(nRed, lens.curvature, lens.getHeight());
+        const angle = Utils.degToRad(this.renderer.incidentAngle);
+        const spread = (fRed - fBlue) * Math.abs(Math.tan(angle));
+
+        if (spread < 3) {
+            return { hasDispersion: false, message: '偏折太弱，色散不明显，请增大弧度或倾角' };
+        }
+
+        return {
+            hasDispersion: true,
+            message: `色散明显：阿贝数≈${abbe}，蓝光焦距最短、红光最长，三色焦斑沿焦平面分开约${Math.round(spread)}px`
+        };
     }
-    
+
     /**
-     * 检查低色散效果
+     * 检查低色散效果（阿贝数大，三色焦点几乎重合）
      */
     checkLowDispersion(lens) {
-        if (lens.dispersion > 0.15) {
-            return { lowDispersion: false, message: '材料色散较大，请使用低色散镜片' };
+        if (!this.renderer.showDispersion) {
+            return { lowDispersion: false, message: '请先点击工具栏“色散”按钮，便于对比三色光' };
         }
-        
-        return { lowDispersion: true, message: '色散很小，不同颜色光几乎重合' };
+
+        const abbe = lens.getAbbeNumber ? lens.getAbbeNumber() : 60;
+        if (abbe < 60) {
+            return { lowDispersion: false, message: `该材料阿贝数约${abbe}，色散较大，请选择低色散镜片（Vd≈80）` };
+        }
+
+        return { lowDispersion: true, message: `阿贝数≈${abbe}，色散很小，三色光几乎重合` };
     }
-    
+
     /**
-     * 检查球差现象
+     * 检查球差现象（球面凸透镜）
+     * 判据直接取自物理模型：边缘光线交点明显前移于近轴焦点
      */
     checkSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
             return { hasAberration: false, message: '需要使用球面凸透镜' };
         }
-        
+
         if (lens.curvature < 50) {
-            return { hasAberration: false, message: '曲率太小，球差不明显' };
+            return { hasAberration: false, message: '弧度太小，球差不明显' };
         }
-        
-        return { hasAberration: true, message: '球差明显，边缘光线会聚点与中心不同' };
+
+        const saRatio = Physics.longitudinalSphericalAberration(lens);
+        const f = Math.abs(Physics.getFocalLength(lens));
+        const shift = saRatio * f;
+        if (shift < 5) {
+            return { hasAberration: false, message: '边缘光线前移不足，球差不明显，请增大弧度' };
+        }
+
+        return {
+            hasAberration: true,
+            message: `球差明显：边缘光线比近轴焦点提前约${Math.round(shift)}px会聚`
+        };
     }
-    
+
     /**
-     * 检查无球差效果
+     * 检查非球面消球差效果
+     * 判据与画面一致：非球面 K=1，边缘光线同样会聚于近轴焦点
      */
     checkNoSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.ASPHERIC) {
             return { noAberration: false, message: '需要使用非球面透镜' };
         }
-        
-        return { noAberration: true, message: '球差被消除，所有光线会聚到同一点' };
+
+        const saRatio = Physics.longitudinalSphericalAberration(lens);
+        if (saRatio > 0.01) {
+            return { noAberration: false, message: '仍存在球差，请确认使用非球面透镜' };
+        }
+
+        return { noAberration: true, message: '球差被消除，边缘与中心光线会聚到同一点' };
     }
     
     /**

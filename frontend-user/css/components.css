@@ -344,6 +344,88 @@
     border-color: var(--color-primary);
 }
 
+/* 入射倾角控件 */
+.angle-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 2px var(--spacing-sm);
+    background-color: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.angle-control.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.angle-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.angle-label .btn-help-small {
+    position: static;
+    width: 15px;
+    height: 15px;
+    font-size: 10px;
+}
+
+.angle-slider {
+    width: 110px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(to right, var(--color-border), var(--color-primary), var(--color-border));
+    border-radius: var(--radius-full);
+    outline: none;
+    cursor: pointer;
+}
+
+.angle-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--color-primary);
+    border: 2px solid var(--color-bg-card);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+}
+
+.angle-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--color-primary);
+    border: 2px solid var(--color-bg-card);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+}
+
+.angle-slider:disabled {
+    cursor: not-allowed;
+}
+
+.angle-value {
+    font-family: "Courier New", monospace;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary);
+    min-width: 26px;
+    text-align: right;
+}
+
+.angle-range-hint {
+    font-size: 10px;
+    color: var(--color-text-hint);
+    white-space: nowrap;
+}
+
 /* 模态框 */
 .modal-overlay {
     position: fixed;

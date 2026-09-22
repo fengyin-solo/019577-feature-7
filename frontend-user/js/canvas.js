@@ -82,13 +82,14 @@ class CanvasManager {
     
     handleResize() {
         this.renderer.resize();
-        
+
         this.lenses.forEach(lens => {
             lens.x = Utils.clamp(lens.x, 50, this.renderer.width - 50);
             lens.y = Utils.clamp(lens.y, 50, this.renderer.height - 50);
         });
-        
+
         this.renderer.setLenses(this.lenses);
+        this.notifySceneChanged();
     }
     
     handlePointerDown(e) {
@@ -122,8 +123,9 @@ class CanvasManager {
             50,
             this.renderer.height - 50
         );
-        
+
         this.renderer.render();
+        this.notifySceneChanged();
     }
     
     handlePointerUp() {
@@ -166,6 +168,7 @@ class CanvasManager {
     addLens(lens) {
         this.lenses.push(lens);
         this.renderer.setLenses(this.lenses);
+        this.notifySceneChanged();
     }
     
     removeLens(lens) {
@@ -178,7 +181,15 @@ class CanvasManager {
             this.renderer.setLenses(this.lenses);
         }
     }
-    
+
+    /**
+     * 画布几何（透镜位置、数量、尺寸）变化时通知界面
+     * 用于刷新入射倾角的有效范围提示等
+     */
+    notifySceneChanged() {
+        window.dispatchEvent(new CustomEvent('sceneGeometryChanged'));
+    }
+
     selectLens(lens) {
         if (this.selectedLens) {
             this.selectedLens.selected = false;
@@ -207,6 +218,7 @@ class CanvasManager {
         this.isDragging = false;
         this.renderer.setLenses([]);
         this.renderer.render();
+        this.notifySceneChanged();
     }
     
     getRenderer() {
